@@ -51,11 +51,19 @@ Current end-to-end path:
 The plugin worker uses the local AI2AI client in `../skills/ai2ai/ai2ai-client.js` to send a real `dev.claude_task` envelope.
 
 ### Return path
-For the narrow first path, returned AI2AI results should be written as JSON files into:
+Returned AI2AI results can now be written automatically into:
 
 - `/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox`
 
-Then the plugin action `sync-pending-responses` ingests them, updates issue state, comments the result, and marks the issue done on success.
+Use the helper watcher:
+
+```bash
+node /home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox-writer.js --once
+# or keep it running
+node /home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox-writer.js
+```
+
+It scans AI2AI conversation logs for `dev.claude_task` response messages and materializes inbox JSON files for the plugin. Then the plugin action `sync-pending-responses` ingests them, updates issue state, comments the result, and marks the issue done on success.
 
 ### Expected inbox file shape
 ```json
