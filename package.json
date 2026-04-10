@@ -1,0 +1,11 @@
+{
+  "name": "paperclip-ai2ai-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Paperclip plugin for AI2AI task dispatch",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'build placeholder'",
+    "test": "echo 'test placeholder'"
+  }
+}
