@@ -46,6 +46,7 @@ function IssueBridgePanel({ context }: PluginDetailTabProps) {
     issueId: context.entityId,
   });
   const dispatch = usePluginAction(ACTION_KEYS.dispatchClaudeTask);
+  const syncPending = usePluginAction(ACTION_KEYS.syncPendingResponses);
 
   async function handleDispatch() {
     await dispatch({
@@ -74,7 +75,10 @@ function IssueBridgePanel({ context }: PluginDetailTabProps) {
         </div>
       ) : null}
       {data?.error ? <div style={{ color: "red" }}>Error: {data.error}</div> : null}
-      <button onClick={() => void handleDispatch()}>Dispatch dev.claude_task</button>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button onClick={() => void handleDispatch()}>Dispatch dev.claude_task</button>
+        <button onClick={() => void syncPending().then(() => refresh())}>Sync returned responses</button>
+      </div>
     </div>
   );
 }

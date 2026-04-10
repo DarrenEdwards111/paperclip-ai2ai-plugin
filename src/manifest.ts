@@ -31,7 +31,8 @@ const manifest: PaperclipPluginManifestV1 = {
       ai2aiEndpoint: { type: "string", title: "AI2AI Endpoint", default: "http://localhost:18811/ai2ai" },
       recipientAgent: { type: "string", title: "Recipient Agent", default: "alex-assistant" },
       recipientHuman: { type: "string", title: "Recipient Human", default: "Alex" },
-      recipientNode: { type: "string", title: "Recipient Node", default: "unknown" }
+      recipientNode: { type: "string", title: "Recipient Node", default: "unknown" },
+      responseInboxDir: { type: "string", title: "Response Inbox Directory", default: "/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox" }
     }
   },
   ui: {

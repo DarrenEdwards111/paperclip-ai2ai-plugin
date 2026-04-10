@@ -22,4 +22,10 @@ export const DATA_KEYS = {
 export const ACTION_KEYS = {
   dispatchClaudeTask: "dispatch-claude-task",
   ingestResponse: "ingest-response",
+  syncPendingResponses: "sync-pending-responses",
+} as const;
+
+export const STATE_KEYS = {
+  bridge: "bridge",
+  ai2aiConversation: "ai2ai-conversation",
 } as const;
