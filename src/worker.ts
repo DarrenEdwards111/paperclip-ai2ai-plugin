@@ -73,6 +73,24 @@ async function lookupConversationMapping(ctx: any, conversationId: string): Prom
   return (await ctx.state.get(conversationScope(conversationId))) ?? null;
 }
 
+function buildAi2AiCommandEnvelope(task: string, extras: Record<string, unknown> = {}) {
+  return {
+    kind: "ai2ai.command",
+    version: "1",
+    command: "dev.claude_task",
+    instructions: task,
+    ...extras,
+  };
+}
+
+function extractAi2AiCommandEnvelope(payload: Record<string, unknown>) {
+  const commandEnvelope = payload?.commandEnvelope;
+  if (!commandEnvelope || typeof commandEnvelope !== "object") return null;
+  const record = commandEnvelope as Record<string, unknown>;
+  if (record.kind !== "ai2ai.command") return null;
+  return record;
+}
+
 async function sendClaudeTask(endpoint: string, to: { agent: string; human: string; node: string }, payload: Record<string, unknown>) {
   const envelope = ai2aiClient.createEnvelope({
     to,
@@ -112,6 +130,7 @@ async function ingestFile(ctx: any, filePath: string) {
 
   const response = data.payload ?? {};
   const ok = typeof data.ok === "boolean" ? data.ok : Boolean((response as any)?.ok);
+  const commandEnvelope = extractAi2AiCommandEnvelope(response);
 
   const next: BridgeRecord = {
     ...(await getBridgeState(ctx, issueId)),
@@ -127,8 +146,8 @@ async function ingestFile(ctx: any, filePath: string) {
   await ctx.issues.createComment(
     issueId,
     ok
-      ? `AI2AI response received. Remote task completed successfully.\n\n\`\`\`json\n${summary}\n\`\`\``
-      : `AI2AI response received. Remote task failed.\n\n\`\`\`json\n${summary}\n\`\`\``,
+      ? `AI2AI response received. Remote task completed successfully.${commandEnvelope ? " Machine-readable AI2AI command envelope detected in response." : ""}\n\n\`\`\`json\n${summary}\n\`\`\``
+      : `AI2AI response received. Remote task failed.${commandEnvelope ? " Machine-readable AI2AI command envelope detected in response." : ""}\n\n\`\`\`json\n${summary}\n\`\`\``,
     companyId,
   );
 
@@ -180,7 +199,15 @@ const plugin = definePlugin({
         ? params.task.trim()
         : [issue.title, issue.description].filter(Boolean).join("\n\n");
 
-      const payload: Record<string, unknown> = { task };
+      const payload: Record<string, unknown> = {
+        task,
+        commandEnvelope: buildAi2AiCommandEnvelope(task, {
+          cwd,
+          issueId,
+          companyId,
+          source: "paperclip-ai2ai-plugin",
+        }),
+      };
       if (cwd) payload.cwd = cwd;
 
       const envelope = await sendClaudeTask(endpoint, { agent, human, node }, payload);
@@ -204,7 +231,7 @@ const plugin = definePlugin({
 
       await ctx.issues.createComment(
         issueId,
-        `AI2AI dispatch sent to **${agent}** via \`${endpoint}\`${conversationId ? ` (conversation \`${conversationId}\`)` : ""}.`,
+        `AI2AI dispatch sent to **${agent}** via \`${endpoint}\`${conversationId ? ` (conversation \`${conversationId}\`)` : ""}. Included machine-readable AI2AI command envelope for \`dev.claude_task\`.`,
         companyId,
       );
 
@@ -236,13 +263,15 @@ const plugin = definePlugin({
         error: ok ? undefined : String((response as any)?.stderr || params?.error || "Remote task failed"),
       };
 
+      const commandEnvelope = extractAi2AiCommandEnvelope(response as Record<string, unknown>);
+
       await setBridgeState(ctx, next);
       const summary = JSON.stringify(response, null, 2);
       await ctx.issues.createComment(
         issueId,
         ok
-          ? `AI2AI response received. Remote task completed successfully.\n\n\`\`\`json\n${summary}\n\`\`\``
-          : `AI2AI response received. Remote task failed.\n\n\`\`\`json\n${summary}\n\`\`\``,
+          ? `AI2AI response received. Remote task completed successfully.${commandEnvelope ? " Machine-readable AI2AI command envelope detected in response." : ""}\n\n\`\`\`json\n${summary}\n\`\`\``
+          : `AI2AI response received. Remote task failed.${commandEnvelope ? " Machine-readable AI2AI command envelope detected in response." : ""}\n\n\`\`\`json\n${summary}\n\`\`\``,
         companyId,
       );
 

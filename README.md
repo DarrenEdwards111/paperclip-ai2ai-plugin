@@ -42,6 +42,7 @@ Initial plugin build is complete and verified.
 Current end-to-end path:
 - Paperclip issue -> plugin dispatch action
 - plugin sends live `dev.claude_task` over AI2AI
+- outbound payload includes a machine-readable `commandEnvelope` object for AI2AI command obedience
 - desktop receiver runs Claude task and returns result over AI2AI
 - plugin can ingest returned result files from a response inbox and update the issue
 
@@ -49,6 +50,27 @@ Current end-to-end path:
 
 ### Outbound dispatch
 The plugin worker uses the local AI2AI client in `../skills/ai2ai/ai2ai-client.js` to send a real `dev.claude_task` envelope.
+
+It now also attaches a machine-readable AI2AI command envelope inside the payload:
+
+```json
+{
+  "task": "Fix the failing build and report what changed",
+  "cwd": "/tmp/pall-lean",
+  "commandEnvelope": {
+    "kind": "ai2ai.command",
+    "version": "1",
+    "command": "dev.claude_task",
+    "instructions": "Fix the failing build and report what changed",
+    "cwd": "/tmp/pall-lean",
+    "issueId": "...",
+    "companyId": "...",
+    "source": "paperclip-ai2ai-plugin"
+  }
+}
+```
+
+Receivers should obey the structured `commandEnvelope` in preference to treating free text as an implicit command.
 
 ### Return path
 Returned AI2AI results can now be written automatically into:
@@ -74,7 +96,12 @@ It scans AI2AI conversation logs for `dev.claude_task` response messages and mat
     "ok": true,
     "stdout": "...",
     "stderr": "",
-    "finishedAt": "2026-04-10T16:00:00.000Z"
+    "finishedAt": "2026-04-10T16:00:00.000Z",
+    "commandEnvelope": {
+      "kind": "ai2ai.command",
+      "version": "1",
+      "command": "dev.claude_task"
+    }
   }
 }
 ```
