@@ -17,12 +17,14 @@ export const EXPORT_NAMES = {
 export const DATA_KEYS = {
   health: "health",
   issueBridgeState: "issue-bridge-state",
+  liveTaskStatus: "live-task-status",
 } as const;
 
 export const ACTION_KEYS = {
   dispatchClaudeTask: "dispatch-claude-task",
   ingestResponse: "ingest-response",
   syncPendingResponses: "sync-pending-responses",
+  syncLiveTaskStatus: "sync-live-task-status",
 } as const;
 
 export const STATE_KEYS = {

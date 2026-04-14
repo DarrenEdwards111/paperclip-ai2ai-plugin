@@ -2,27 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
-import { ACTION_KEYS, DATA_KEYS, PLUGIN_ID, STATE_KEYS } from "./constants.js";
+import { ACTION_KEYS, DATA_KEYS, STATE_KEYS } from "./constants.js";
+import type { BridgeLiveTask, BridgeRecord } from "./types.js";
 
 const require = createRequire(import.meta.url);
 const ai2aiClient = require("../../skills/ai2ai/ai2ai-client.js") as {
   createEnvelope: (input: Record<string, unknown>) => Record<string, unknown>;
   sendMessage: (endpoint: string, envelope: Record<string, unknown>, options?: Record<string, unknown>) => Promise<unknown>;
-};
-
-type BridgeRecord = {
-  issueId: string;
-  status: "idle" | "dispatched" | "completed" | "failed";
-  updatedAt: string;
-  request?: {
-    endpoint: string;
-    to: { agent: string; human: string; node: string };
-    task: string;
-    cwd?: string;
-    conversationId?: string;
-  };
-  response?: Record<string, unknown>;
-  error?: string;
 };
 
 type PluginConfig = {
@@ -31,6 +17,7 @@ type PluginConfig = {
   recipientHuman?: string;
   recipientNode?: string;
   responseInboxDir?: string;
+  liveStatusDir?: string;
 };
 
 function now() {
@@ -63,6 +50,10 @@ async function getConfig(ctx: any): Promise<PluginConfig> {
 
 function getInboxDir(config: PluginConfig) {
   return config.responseInboxDir || path.resolve("/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox");
+}
+
+function getLiveStatusDir(config: PluginConfig) {
+  return config.liveStatusDir || path.resolve("/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-live");
 }
 
 async function storeConversationMapping(ctx: any, conversationId: string, issueId: string, companyId: string) {
@@ -102,6 +93,64 @@ async function sendClaudeTask(endpoint: string, to: { agent: string; human: stri
   return envelope;
 }
 
+async function readJsonIfExists(filePath: string) {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLiveTask(data: Record<string, unknown>): BridgeLiveTask {
+  const statusRaw = typeof data.status === "string" ? data.status : "idle";
+  const status = (["idle", "queued", "running", "completed", "failed"].includes(statusRaw) ? statusRaw : "idle") as BridgeLiveTask["status"];
+  return {
+    taskId: typeof data.taskId === "string" ? data.taskId : undefined,
+    status,
+    cwd: typeof data.cwd === "string" ? data.cwd : undefined,
+    command: typeof data.command === "string" ? data.command : undefined,
+    startedAt: typeof data.startedAt === "string" ? data.startedAt : undefined,
+    updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : now(),
+    finishedAt: typeof data.finishedAt === "string" ? data.finishedAt : undefined,
+    logPath: typeof data.logPath === "string" ? data.logPath : undefined,
+    logTail: typeof data.logTail === "string" ? data.logTail : undefined,
+    source: typeof data.source === "string" ? data.source : undefined,
+    error: typeof data.error === "string" ? data.error : undefined,
+  };
+}
+
+async function syncLiveTaskForIssue(ctx: any, issueId: string): Promise<BridgeRecord> {
+  const config = await getConfig(ctx);
+  const liveDir = getLiveStatusDir(config);
+  await fs.mkdir(liveDir, { recursive: true });
+  const bridge = await getBridgeState(ctx, issueId);
+  const liveFile = path.join(liveDir, `${issueId}.json`);
+  const liveJson = await readJsonIfExists(liveFile);
+
+  if (!liveJson) return bridge;
+
+  const liveTask = normalizeLiveTask(liveJson);
+  const nextStatus: BridgeRecord["status"] =
+    liveTask.status === "running" || liveTask.status === "queued"
+      ? "running"
+      : liveTask.status === "completed"
+        ? "completed"
+        : liveTask.status === "failed"
+          ? "failed"
+          : bridge.status;
+
+  const next: BridgeRecord = {
+    ...bridge,
+    status: nextStatus,
+    updatedAt: now(),
+    liveTask,
+    error: liveTask.status === "failed" ? liveTask.error || bridge.error : bridge.error,
+  };
+
+  await setBridgeState(ctx, next);
+  return next;
+}
+
 async function ingestFile(ctx: any, filePath: string) {
   const raw = await fs.readFile(filePath, "utf8");
   const data = JSON.parse(raw) as {
@@ -132,13 +181,23 @@ async function ingestFile(ctx: any, filePath: string) {
   const ok = typeof data.ok === "boolean" ? data.ok : Boolean((response as any)?.ok);
   const commandEnvelope = extractAi2AiCommandEnvelope(response);
 
+  const prior = await getBridgeState(ctx, issueId);
   const next: BridgeRecord = {
-    ...(await getBridgeState(ctx, issueId)),
+    ...prior,
     issueId,
     status: ok ? "completed" : "failed",
     updatedAt: now(),
     response,
     error: ok ? undefined : String(data.error || (response as any)?.stderr || "Remote task failed"),
+    liveTask: prior.liveTask
+      ? {
+          ...prior.liveTask,
+          status: ok ? "completed" : "failed",
+          updatedAt: now(),
+          finishedAt: now(),
+          error: ok ? undefined : String(data.error || (response as any)?.stderr || "Remote task failed"),
+        }
+      : prior.liveTask,
   };
 
   await setBridgeState(ctx, next);
@@ -163,13 +222,20 @@ async function ingestFile(ctx: any, filePath: string) {
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register(DATA_KEYS.health, async () => {
-      return { status: "ok", checkedAt: now(), pluginId: PLUGIN_ID };
+      return { status: "ok", checkedAt: now(), pluginId: "paperclip-ai2ai-plugin" };
     });
 
     ctx.data.register(DATA_KEYS.issueBridgeState, async (params) => {
       const issueId = typeof params?.issueId === "string" ? params.issueId : "";
       if (!issueId) throw new Error("issueId is required");
-      return await getBridgeState(ctx, issueId);
+      return await syncLiveTaskForIssue(ctx, issueId);
+    });
+
+    ctx.data.register(DATA_KEYS.liveTaskStatus, async (params) => {
+      const issueId = typeof params?.issueId === "string" ? params.issueId : "";
+      if (!issueId) throw new Error("issueId is required");
+      const state = await syncLiveTaskForIssue(ctx, issueId);
+      return state.liveTask ?? { status: "idle", updatedAt: now() };
     });
 
     ctx.actions.register(ACTION_KEYS.dispatchClaudeTask, async (params) => {
@@ -227,6 +293,13 @@ const plugin = definePlugin({
           cwd,
           conversationId,
         },
+        liveTask: {
+          status: "queued",
+          cwd,
+          command: "dev.claude_task",
+          updatedAt: now(),
+          source: "paperclip-ai2ai-plugin",
+        },
       });
 
       await ctx.issues.createComment(
@@ -254,12 +327,22 @@ const plugin = definePlugin({
         throw new Error("issueId and companyId are required");
       }
 
+      const prior = await getBridgeState(ctx, issueId);
       const next: BridgeRecord = {
-        ...(await getBridgeState(ctx, issueId)),
+        ...prior,
         issueId,
         status: ok ? "completed" : "failed",
         updatedAt: now(),
         response: response as Record<string, unknown>,
+        liveTask: prior.liveTask
+          ? {
+              ...prior.liveTask,
+              status: ok ? "completed" : "failed",
+              updatedAt: now(),
+              finishedAt: now(),
+              error: ok ? undefined : String((response as any)?.stderr || params?.error || "Remote task failed"),
+            }
+          : prior.liveTask,
         error: ok ? undefined : String((response as any)?.stderr || params?.error || "Remote task failed"),
       };
 
@@ -296,6 +379,13 @@ const plugin = definePlugin({
       }
 
       return { ok: true, inboxDir, processedCount: processed.length, processed };
+    });
+
+    ctx.actions.register(ACTION_KEYS.syncLiveTaskStatus, async (params) => {
+      const issueId = typeof params?.issueId === "string" ? params.issueId : "";
+      if (!issueId) throw new Error("issueId is required");
+      const state = await syncLiveTaskForIssue(ctx, issueId);
+      return { ok: true, issueId, liveTask: state.liveTask ?? null, status: state.status };
     });
   },
 

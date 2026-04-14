@@ -32,7 +32,8 @@ const manifest: PaperclipPluginManifestV1 = {
       recipientAgent: { type: "string", title: "Recipient Agent", default: "alex-assistant" },
       recipientHuman: { type: "string", title: "Recipient Human", default: "Alex" },
       recipientNode: { type: "string", title: "Recipient Node", default: "unknown" },
-      responseInboxDir: { type: "string", title: "Response Inbox Directory", default: "/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox" }
+      responseInboxDir: { type: "string", title: "Response Inbox Directory", default: "/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-inbox" },
+      liveStatusDir: { type: "string", title: "Live Status Directory", default: "/home/darre/.openclaw/workspace/ai2ai-protocol/paperclip-live" }
     }
   },
   ui: {
