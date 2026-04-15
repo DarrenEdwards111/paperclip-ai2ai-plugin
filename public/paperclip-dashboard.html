@@ -30,7 +30,7 @@
 <body>
   <header>
     <h1>Route B Agent Dashboard</h1>
-    <div class="sub">Live status from Paperclip-style runtime files for Codex and Claude.</div>
+    <div class="sub">Live status from Paperclip-style runtime files for Codex and Claude. <span id="heartbeat">refreshing…</span></div>
   </header>
   <main id="cards"></main>
   <script>
@@ -76,14 +76,22 @@
               <div class="muted">Command</div><div>${esc(data.command || '')}</div>
             </div>
             <div class="label" style="margin-bottom:8px;">Log tail</div>
-            <pre>${esc(data.logTail || '(no log yet)')}</pre>
+            <pre id="log-${esc(task.id)}">${esc(data.logTail || '(no log yet)')}</pre>
           </div>
         </section>`;
     }
 
     async function refresh() {
       const cards = document.getElementById('cards');
+      const heartbeat = document.getElementById('heartbeat');
       const html = [];
+      try {
+        const ping = await fetch(`/ping?ts=${Date.now()}`, { cache: 'no-store' });
+        const pong = await ping.json();
+        heartbeat.textContent = `last refresh ${new Date(pong.now).toLocaleTimeString()}`;
+      } catch {
+        heartbeat.textContent = 'refresh failed';
+      }
       for (const task of TASKS) {
         try {
           const data = await loadTask(task);
@@ -97,10 +105,13 @@
         }
       }
       cards.innerHTML = html.join('');
+      document.title = `Route B Dashboard, ${new Date().toLocaleTimeString()}`;
     }
 
     refresh();
-    setInterval(refresh, 3000);
+    setInterval(() => {
+      refresh().catch(err => console.error('refresh failed', err));
+    }, 1500);
   </script>
 </body>
 </html>

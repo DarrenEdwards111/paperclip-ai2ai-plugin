@@ -5,6 +5,7 @@ const path = require('path');
 
 const root = '/home/darre/.openclaw/workspace';
 const liveDir = path.join(root, 'ai2ai-protocol', 'paperclip-live');
+const dashboardHtml = path.join(root, 'paperclip-ai2ai-plugin', 'public', 'paperclip-dashboard.html');
 const port = 8765;
 
 function send(res, code, body, type='text/plain') {
@@ -19,7 +20,7 @@ function send(res, code, body, type='text/plain') {
 http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   if (url.pathname === '/' || url.pathname === '/dashboard') {
-    return send(res, 200, fs.readFileSync(path.join(root, 'paperclip-dashboard.html')), 'text/html; charset=utf-8');
+    return send(res, 200, fs.readFileSync(dashboardHtml), 'text/html; charset=utf-8');
   }
   if (url.pathname.startsWith('/paperclip-live/')) {
     const file = path.basename(url.pathname);
