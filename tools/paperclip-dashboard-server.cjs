@@ -112,6 +112,7 @@ http.createServer((req, res) => {
     return send(res, 200, fs.readFileSync(full), 'application/json; charset=utf-8');
   }
   send(res, 404, 'not found');
-}).listen(port, '127.0.0.1', () => {
+}).listen(port, '0.0.0.0', () => {
   console.log(`Dashboard running at http://127.0.0.1:${port}/dashboard`);
+  console.log(`LAN access: http://172.27.91.51:${port}/dashboard`);
 });
