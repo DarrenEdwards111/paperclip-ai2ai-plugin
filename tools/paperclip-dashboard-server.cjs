@@ -33,7 +33,15 @@ function send(res, code, body, type='text/plain') {
 function readTask(id) {
   const full = path.join(liveDir, `${id}.json`);
   if (!fs.existsSync(full)) return null;
-  return JSON.parse(fs.readFileSync(full, 'utf8'));
+  const data = JSON.parse(fs.readFileSync(full, 'utf8'));
+  try {
+    const logPath = data.latestLogPath || data.logPath;
+    if (logPath && fs.existsSync(logPath)) {
+      const txt = fs.readFileSync(logPath, 'utf8');
+      data.logTail = txt.slice(-12000);
+    }
+  } catch {}
+  return data;
 }
 
 function getRecentCommits() {
@@ -84,6 +92,8 @@ function renderDashboard() {
         </header>
         <div class="body">
           <div class="meta"><span>Task ID</span><span>${esc(data.taskId || task.id)}</span></div>
+          <div class="meta"><span>Run ID</span><span>${esc(data.runId || '')}</span></div>
+          <div class="meta"><span>PID</span><span>${esc(data.pid || '')}</span></div>
           <div class="meta"><span>Started</span><span>${esc(data.startedAt || '')}</span></div>
           <div class="meta"><span>Updated</span><span>${esc(data.updatedAt || '')}</span></div>
           <div class="meta"><span>Finished</span><span>${esc(data.finishedAt || '')}</span></div>
