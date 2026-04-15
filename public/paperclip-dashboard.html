@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Route B Agent Dashboard</title>
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #0b1020; color: #e8ecf3; }
+    header { padding: 20px 24px; border-bottom: 1px solid #24304a; background: #121a2f; }
+    h1 { margin: 0; font-size: 20px; }
+    .sub { margin-top: 6px; color: #96a3bd; font-size: 13px; }
+    main { padding: 20px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+    .card { background: #121a2f; border: 1px solid #24304a; border-radius: 14px; overflow: hidden; }
+    .card header { border: 0; border-bottom: 1px solid #24304a; padding: 14px 16px; }
+    .row { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .label { color: #96a3bd; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .value { font-size: 14px; }
+    .body { padding: 16px; }
+    .status { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .running { background: #173a2d; color: #78f0b0; }
+    .completed { background: #1b2e52; color: #8cc5ff; }
+    .failed { background: #4a1f27; color: #ff9dab; }
+    pre { background: #0a0f1f; color: #d9e2f2; padding: 14px; border-radius: 10px; overflow: auto; white-space: pre-wrap; max-height: 420px; }
+    .meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; margin-bottom: 14px; font-size: 13px; }
+    .muted { color: #96a3bd; }
+    button { background: #3a7afe; color: white; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #5c90ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Route B Agent Dashboard</h1>
+    <div class="sub">Live status from Paperclip-style runtime files for Codex and Claude.</div>
+  </header>
+  <main id="cards"></main>
+  <script>
+    const TASKS = [
+      { id: 'routeb-codex', title: 'Codex, P-side Route B' },
+      { id: 'routeb-claude', title: 'Claude, semantic Route B' }
+    ];
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+    }
+
+    async function loadTask(task) {
+      const res = await fetch(`/paperclip-live/${task.id}.json?ts=${Date.now()}`);
+      if (!res.ok) throw new Error(`Missing ${task.id}`);
+      return await res.json();
+    }
+
+    function badge(status) {
+      const cls = ['running','completed','failed'].includes(status) ? status : 'running';
+      return `<span class="status ${cls}">${esc(status)}</span>`;
+    }
+
+    function renderCard(task, data) {
+      return `
+        <section class="card">
+          <header>
+            <div class="row">
+              <div>
+                <div class="label">Task</div>
+                <div class="value">${esc(task.title)}</div>
+              </div>
+              <div>${badge(data.status || 'running')}</div>
+            </div>
+          </header>
+          <div class="body">
+            <div class="meta">
+              <div class="muted">Task ID</div><div>${esc(data.taskId || task.id)}</div>
+              <div class="muted">Started</div><div>${esc(data.startedAt || '')}</div>
+              <div class="muted">Updated</div><div>${esc(data.updatedAt || '')}</div>
+              <div class="muted">Finished</div><div>${esc(data.finishedAt || '')}</div>
+              <div class="muted">CWD</div><div>${esc(data.cwd || '')}</div>
+              <div class="muted">Command</div><div>${esc(data.command || '')}</div>
+            </div>
+            <div class="label" style="margin-bottom:8px;">Log tail</div>
+            <pre>${esc(data.logTail || '(no log yet)')}</pre>
+          </div>
+        </section>`;
+    }
+
+    async function refresh() {
+      const cards = document.getElementById('cards');
+      const html = [];
+      for (const task of TASKS) {
+        try {
+          const data = await loadTask(task);
+          html.push(renderCard(task, data));
+        } catch (e) {
+          html.push(`
+            <section class="card">
+              <header><div class="value">${esc(task.title)}</div></header>
+              <div class="body"><pre>Not available yet: ${esc(e.message)}</pre></div>
+            </section>`);
+        }
+      }
+      cards.innerHTML = html.join('');
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>
