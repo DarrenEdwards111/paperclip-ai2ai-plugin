@@ -1,12 +1,16 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const root = '/home/darre/.openclaw/workspace';
 const liveDir = path.join(root, 'ai2ai-protocol', 'paperclip-live');
+const repoDir = '/tmp/pall-lean';
 const port = 8765;
 const tasks = [
   { id: 'routeb-codex', title: 'Codex, P-side Route B' },
+  { id: 'routeb-codex-pty', title: 'Codex PTY test, P-side Route B' },
+  { id: 'routeb-codex-pty2', title: 'Codex PTY fused runner, P-side Route B' },
   { id: 'routeb-claude', title: 'Claude, semantic Route B' },
 ];
 
@@ -30,6 +34,37 @@ function readTask(id) {
   const full = path.join(liveDir, `${id}.json`);
   if (!fs.existsSync(full)) return null;
   return JSON.parse(fs.readFileSync(full, 'utf8'));
+}
+
+function getRecentCommits() {
+  try {
+    const out = execSync(`git -C ${repoDir} log --oneline -n 12`, { encoding: 'utf8' });
+    return out.trim().split('\n').filter(Boolean).map((line) => {
+      const firstSpace = line.indexOf(' ');
+      const sha = firstSpace === -1 ? line : line.slice(0, firstSpace);
+      const subject = firstSpace === -1 ? '' : line.slice(firstSpace + 1);
+      let owner = 'unknown';
+      const s = subject.toLowerCase();
+      if (s.includes('route b semantic') || s.includes('semantic gap') || s.includes('godmove') || s.includes('known false') || s.includes('parity_odd')) owner = 'Claude';
+      else if (s.includes('restriction') || s.includes('coefficient') || s.includes('mlproj') || s.includes('fullybounded') || s.includes('factorization')) owner = 'Codex';
+      return { sha, subject, owner };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function renderCommitList(title, commits) {
+  const items = commits.length
+    ? commits.map(c => `<li><code>${esc(c.sha)}</code> <strong>[${esc(c.owner)}]</strong> ${esc(c.subject)}</li>`).join('')
+    : '<li>No commits found.</li>';
+  return `
+    <section class="card">
+      <header>
+        <div><div class="label">GitHub commits</div><div class="title">${esc(title)}</div></div>
+      </header>
+      <div class="body"><ul class="commit-list">${items}</ul></div>
+    </section>`;
 }
 
 function renderDashboard() {
@@ -60,6 +95,10 @@ function renderDashboard() {
       </section>`;
   }).join('');
 
+  const commits = getRecentCommits();
+  const codexCommits = commits.filter(c => c.owner === 'Codex').slice(0, 5);
+  const claudeCommits = commits.filter(c => c.owner === 'Claude').slice(0, 5);
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -84,7 +123,9 @@ function renderDashboard() {
     .completed { background:#1b2e52; color:#8cc5ff; }
     .failed { background:#4a1f27; color:#ff9dab; }
     pre { background:#0a0f1f; color:#d9e2f2; padding:14px; border-radius:10px; overflow:auto; white-space:pre-wrap; max-height:420px; }
-    a { color:#8cc5ff; }
+    .commit-list { margin: 0; padding-left: 18px; }
+    .commit-list li { margin-bottom: 8px; line-height: 1.4; }
+    code { color: #8cc5ff; }
   </style>
 </head>
 <body>
@@ -92,7 +133,11 @@ function renderDashboard() {
     <h1>Route B Agent Dashboard</h1>
     <div class="sub">Server-rendered live view. Auto-refresh every 2 seconds. Last render: ${esc(now)}</div>
   </header>
-  <main>${cards}</main>
+  <main>
+    ${cards}
+    ${renderCommitList('Last 5 likely Codex commits', codexCommits)}
+    ${renderCommitList('Last 5 likely Claude commits', claudeCommits)}
+  </main>
 </body>
 </html>`;
 }
@@ -114,5 +159,5 @@ http.createServer((req, res) => {
   send(res, 404, 'not found');
 }).listen(port, '0.0.0.0', () => {
   console.log(`Dashboard running at http://127.0.0.1:${port}/dashboard`);
-  console.log(`LAN access: http://172.27.91.51:${port}/dashboard`);
+  console.log(`LAN access: http://192.168.0.25:${port}/dashboard`);
 });
